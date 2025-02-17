@@ -1,11 +1,72 @@
 #include <stdio.h>
 #include <algorithm>
-
+#include <immintrin.h>  
+#include <cstdlib>
+#include <xmmintrin.h>  // For _mm_malloc()
 #include "CycleTimer.h"
 #include "saxpy_ispc.h"
-
+#include <stdint.h>
 extern void saxpySerial(int N, float a, float* X, float* Y, float* result);
 
+ void avx2(int N, float scale, float* X, float* Y, float* result);
+
+
+
+
+//--------------------------------------------------------
+
+// void avx2(int N, float scale, float* X, float* Y, float* result) {
+//     __m256 scale_vec = _mm256_set1_ps(scale);
+//     for (int i = 0; i < N; i += 24) {  // Process 8 elements per iteration (AVX2)
+//            _mm_prefetch((const char*)&X[i + 32], _MM_HINT_T0);
+//            _mm_prefetch((const char*)&Y[i + 32], _MM_HINT_T0);
+      
+//         __m256 x = _mm256_loadu_ps(&X[i]);  
+        
+//         __m256 y = _mm256_loadu_ps(&Y[i]);  
+       
+        
+//         __m256 x2 = _mm256_loadu_ps(&X[i+8]);  
+//         __m256 y2 = _mm256_loadu_ps(&Y[i+8]);  
+//         __m256 x3 = _mm256_loadu_ps(&X[i+16]);  
+//         __m256 y3 = _mm256_loadu_ps(&Y[i+16]);  
+    
+//         __m256 res1 = _mm256_fmadd_ps(scale_vec, x,  y);
+//         __m256 res2 = _mm256_fmadd_ps(scale_vec, x2, y2);
+//         __m256 res3 = _mm256_fmadd_ps(scale_vec, x3, y3);
+    
+//         _mm256_stream_ps(&result[i], res1);
+//         _mm256_stream_ps(&result[i+8], res2);
+//         _mm256_stream_ps(&result[i+16], res3);
+//     }
+// }
+
+//------------------------------------
+ void avx2(int N, float scale, float* X, float* Y, float* result) {
+    __m256 scale_vec = _mm256_set1_ps(scale);
+
+    int blockSize = 256;  // Process in blocks for better cache use
+    for (int j = 0; j < N; j += blockSize) {
+        for (int i = j; i < j + blockSize; i += 8) {  // Process 8 elements at a time
+            _mm_prefetch((const char*)&X[i + 16], _MM_HINT_T0);  // Prefetch next cache line
+            _mm_prefetch((const char*)&Y[i + 16], _MM_HINT_T0);
+
+            __m256 x = _mm256_load_ps(&X[i]);  
+            __m256 y = _mm256_load_ps(&Y[i]);  
+            
+            __m256 res = _mm256_fmadd_ps(scale_vec, x, y);  
+            
+            _mm256_stream_ps(&result[i], res); // Non-temporal store to reduce cache pollution
+           
+            
+        }
+    }
+    for (int i = (N / 8) * 8; i < N; i++) {
+        result[i] = scale * X[i] + Y[i];
+    }
+}
+
+//-------------------------------------------------
 
 // return GB/s
 static float
@@ -36,12 +97,26 @@ int main() {
     const unsigned int TOTAL_FLOPS = 2 * N;
 
     float scale = 2.f;
+    float* arrayX = (float*)aligned_alloc(32, N * sizeof(float));
+    float* arrayY = (float*)aligned_alloc(32, N * sizeof(float));
+    float* resultSerial = (float*)aligned_alloc(32, N * sizeof(float));
+    float* resultTasks = (float*)aligned_alloc(32, N * sizeof(float));
+    float* resultAVX2 = (float*)aligned_alloc(32, N * sizeof(float));
+    float* resultISPC = (float*)aligned_alloc(32, N * sizeof(float));
 
-    float* arrayX = new float[N];
-    float* arrayY = new float[N];
-    float* resultSerial = new float[N];
-    float* resultISPC = new float[N];
-    float* resultTasks = new float[N];
+//     float* arrayX = (float*)_mm_malloc(N * sizeof(float), 32);
+// float* arrayY = (float*)_mm_malloc(N * sizeof(float), 32);
+// float* resultSerial = (float*)_mm_malloc(N * sizeof(float), 32);
+// float* resultISPC = (float*)_mm_malloc(N * sizeof(float), 32);
+// float* resultAVX2 = (float*)_mm_malloc(N * sizeof(float), 32);
+// float* resultTasks = (float*)_mm_malloc(N * sizeof(float), 32);
+    
+    // float* arrayX = new float[N];
+    // float* arrayY = new float[N];
+    // float* resultSerial = new float[N];
+    // float* resultISPC = new float[N];
+    // float* resultAVX2 = new float[N];
+    // float* resultTasks = new float[N];
 
     // initialize array values
     for (unsigned int i=0; i<N; i++)
@@ -51,6 +126,8 @@ int main() {
         resultSerial[i] = 0.f;
         resultISPC[i] = 0.f;
         resultTasks[i] = 0.f;
+        resultAVX2[i]=0.f;
+       
     }
 
     //
@@ -101,20 +178,55 @@ int main() {
 
     verifyResult(N, resultTasks, resultSerial);
 
+
+    // Run AVX2 Implementation
+    double minAVX2 = 1e30;
+    for (int i = 0; i < 3; ++i) {
+        double startTime = CycleTimer::currentSeconds();
+        avx2(N, scale, arrayX, arrayY, resultAVX2);
+        double endTime = CycleTimer::currentSeconds();
+        minAVX2 = std::min(minAVX2, endTime - startTime);
+    }
+
+    // Verify correctness
+  
+    verifyResult(N, resultAVX2, resultSerial);
+
+
     printf("[saxpy task ispc]:\t[%.3f] ms\t[%.3f] GB/s\t[%.3f] GFLOPS\n",
            minTaskISPC * 1000,
            toBW(TOTAL_BYTES, minTaskISPC),
            toGFLOPS(TOTAL_FLOPS, minTaskISPC));
 
     printf("\t\t\t\t(%.2fx speedup from use of tasks)\n", minISPC/minTaskISPC);
-    //printf("\t\t\t\t(%.2fx speedup from ISPC)\n", minSerial/minISPC);
-    //printf("\t\t\t\t(%.2fx speedup from task ISPC)\n", minSerial/minTaskISPC);
+    printf("\t\t\t\t(%.2fx speedup from ISPC)\n", minSerial/minISPC);
+    printf("\t\t\t\t(%.2fx speedup from task ISPC)\n", minSerial/minTaskISPC);
+    printf("[saxpy AVX2]:        [%.3f] ms  [%.3f] GB/s  [%.3f] GFLOPS\n",
+        minAVX2 * 1000, toBW(TOTAL_BYTES, minAVX2), toGFLOPS(TOTAL_FLOPS, minAVX2));
 
-    delete[] arrayX;
-    delete[] arrayY;
-    delete[] resultSerial;
-    delete[] resultISPC;
-    delete[] resultTasks;
+ printf("Speedup from AVX2:       %.2fx\n", minSerial / minAVX2);
+
+//     delete[] arrayX;
+//     delete[] arrayY;
+//     delete[] resultAVX2;
+//     delete[] resultTasks;
+//    delete[] resultISPC;
+//    delete[] resultSerial;
+
+    free(resultSerial);
+    free(resultISPC);
+    free(resultAVX2);
+    free(arrayX);
+    free(arrayY);
+    free(resultTasks);
+
+//     _mm_free(arrayX);
+// _mm_free(arrayY);
+// _mm_free(resultSerial);
+// _mm_free(resultISPC);
+// _mm_free(resultAVX2);
+// _mm_free(resultTasks);
+
 
     return 0;
 }

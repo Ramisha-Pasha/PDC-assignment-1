@@ -240,17 +240,68 @@ void clampedExpSerial(float* values, int* exponents, float* output, int N) {
   }
 }
 
-void clampedExpVector(float* values, int* exponents, float* output, int N) {
+void clampedExpVector(float *values, int *exponents, float *output, int N)
+{
+  __cs149_vec_float x;
+  __cs149_vec_int y;
+  __cs149_vec_float result;
+  __cs149_vec_float clampVal = _cs149_vset_float(9.999999f);
+  __cs149_vec_int zero = _cs149_vset_int(0);
+  __cs149_vec_int one = _cs149_vset_int(1);
 
-  //
-  // CS149 STUDENTS TODO: Implement your vectorized version of
-  // clampedExpSerial() here.
-  //
-  // Your solution should work for any value of
-  // N and VECTOR_WIDTH, not just when VECTOR_WIDTH divides N
-  //
-  
+
+  for (int i = 0; i < N; i += VECTOR_WIDTH)
+  {
+    int width = (i + VECTOR_WIDTH <= N) ? VECTOR_WIDTH : (N - i);
+    __cs149_mask maskAll = _cs149_init_ones(width);
+
+
+    _cs149_vload_float(x, values + i, maskAll);
+    _cs149_vload_int(y, exponents + i, maskAll);
+
+
+    // Initialize result to 1.0 for all elements
+    _cs149_vset_float(result, 1.0f, maskAll);
+    
+    // Identify where exponent is 1
+    __cs149_mask maskExpOne;
+    _cs149_veq_int(maskExpOne, y, one, maskAll);
+
+    // Directly set result = x where exp == 1
+    _cs149_vmove_float(result, x, maskExpOne);
+
+    __cs149_mask maskNonZeroExp;
+    _cs149_vgt_int(maskNonZeroExp, y, one, maskAll);
+
+
+    // Set result = x for non-zero exponents
+    _cs149_vmove_float(result, x, maskNonZeroExp);
+
+   
+    __cs149_vec_int count;
+    _cs149_vsub_int(count, y, one, maskNonZeroExp);
+
+
+    while (_cs149_cntbits(maskNonZeroExp) > 0)
+
+    {
+      
+      _cs149_vmult_float(result, result, x, maskNonZeroExp);
+      _cs149_vsub_int(count, count, one, maskNonZeroExp);
+      _cs149_vgt_int(maskNonZeroExp, count, zero, maskNonZeroExp);
+    }
+
+
+    // Clamp values greater than 9.999999
+    __cs149_mask maskClamp;
+    _cs149_vgt_float(maskClamp, result, clampVal, maskAll);
+    _cs149_vset_float(result, 9.999999f, maskClamp);
+
+
+    _cs149_vstore_float(output + i, result, maskAll);
+  }
 }
+
 
 // returns the sum of all elements in values
 float arraySumSerial(float* values, int N) {
@@ -265,16 +316,30 @@ float arraySumSerial(float* values, int N) {
 // returns the sum of all elements in values
 // You can assume N is a multiple of VECTOR_WIDTH
 // You can assume VECTOR_WIDTH is a power of 2
-float arraySumVector(float* values, int N) {
-  
-  //
-  // CS149 STUDENTS TODO: Implement your vectorized version of arraySumSerial here
-  //
-  
-  for (int i=0; i<N; i+=VECTOR_WIDTH) {
+float arraySumVector(float *values, int N)
+{
+  __cs149_vec_float vecSum = _cs149_vset_float(0.0f);
+  __cs149_mask maskAll = _cs149_init_ones();
 
+
+  // Vectorized summation
+  for (int i = 0; i < N; i += VECTOR_WIDTH)
+  {
+    __cs149_vec_float vecValues;
+    _cs149_vload_float(vecValues, values + i, maskAll);
+    _cs149_vadd_float(vecSum, vecSum, vecValues, maskAll);
   }
 
-  return 0.0;
+
+  // Reduction using horizontal add
+  for (int step = VECTOR_WIDTH / 2; step > 0; step /= 2)
+  {
+    _cs149_hadd_float(vecSum, vecSum);
+    _cs149_interleave_float(vecSum, vecSum);  //useful for SIMD
+    //shifts even index forward and odd index to the end of array
+  }
+
+
+  return vecSum.value[0]; // Return final scalar sum
 }
 
