@@ -1,20 +1,23 @@
-#graph
 import matplotlib.pyplot as plt
+import numpy as np
 
-# Data from your table
-threads = [2, 3, 4, 5, 6, 7, 8]
-execution_time = [302.044, 360.108, 300.8, 304.399, 304.434, 313.691, 311.45]
-speedup = [2.01, 1.65, 1.98, 1.94, 1.94, 1.89, 1.93]
-ideal_speedup = [t for t in threads]  # Ideal linear speedup
+# Given data
+threads = np.array([2, 3, 4, 5, 6, 7, 8])
+speedup = np.array([1.96, 1.66, 2.43, 2.48, 3.28, 3.35, 3.97])
 
-# Plot the speedup graph
-plt.figure(figsize=(8, 6))
-plt.plot(threads, speedup, marker='o', linestyle='-', color='b', label="Observed Speedup")
-plt.plot(threads, ideal_speedup, linestyle='--', color='r', label="Ideal Speedup (Linear)")
+# Ideal linear speedup for reference
+ideal_speedup = threads
+
+
+plt.figure(figsize=(8, 5))
+plt.plot(threads, speedup, marker='o', linestyle='-', label="Measured Speedup", color='b')
+plt.plot(threads, ideal_speedup, linestyle='--', label="Ideal Linear Speedup", color='r')
 
 plt.xlabel("Number of Threads")
-plt.ylabel("Speedup Factor")
-plt.title("Speedup vs. Number of Threads (View 1)")
+plt.ylabel("Speedup (Relative to Serial)")
+plt.title("Speedup vs. Number of Threads")
 plt.legend()
-plt.grid()
+plt.grid(True)
+
+
 plt.show()

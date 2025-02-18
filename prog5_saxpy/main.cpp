@@ -13,39 +13,13 @@ extern void saxpySerial(int N, float a, float* X, float* Y, float* result);
 
 
 
-//--------------------------------------------------------
 
-// void avx2(int N, float scale, float* X, float* Y, float* result) {
-//     __m256 scale_vec = _mm256_set1_ps(scale);
-//     for (int i = 0; i < N; i += 24) {  // Process 8 elements per iteration (AVX2)
-//            _mm_prefetch((const char*)&X[i + 32], _MM_HINT_T0);
-//            _mm_prefetch((const char*)&Y[i + 32], _MM_HINT_T0);
-      
-//         __m256 x = _mm256_loadu_ps(&X[i]);  
-        
-//         __m256 y = _mm256_loadu_ps(&Y[i]);  
-       
-        
-//         __m256 x2 = _mm256_loadu_ps(&X[i+8]);  
-//         __m256 y2 = _mm256_loadu_ps(&Y[i+8]);  
-//         __m256 x3 = _mm256_loadu_ps(&X[i+16]);  
-//         __m256 y3 = _mm256_loadu_ps(&Y[i+16]);  
-    
-//         __m256 res1 = _mm256_fmadd_ps(scale_vec, x,  y);
-//         __m256 res2 = _mm256_fmadd_ps(scale_vec, x2, y2);
-//         __m256 res3 = _mm256_fmadd_ps(scale_vec, x3, y3);
-    
-//         _mm256_stream_ps(&result[i], res1);
-//         _mm256_stream_ps(&result[i+8], res2);
-//         _mm256_stream_ps(&result[i+16], res3);
-//     }
-// }
 
-//------------------------------------
+//------------------------------------avx 
  void avx2(int N, float scale, float* X, float* Y, float* result) {
     __m256 scale_vec = _mm256_set1_ps(scale);
 
-    int blockSize = 256;  // Process in blocks for better cache use
+    int blockSize = 128;  // Process in blocks for better cache use
     for (int j = 0; j < N; j += blockSize) {
         for (int i = j; i < j + blockSize; i += 8) {  // Process 8 elements at a time
             _mm_prefetch((const char*)&X[i + 16], _MM_HINT_T0);  // Prefetch next cache line
@@ -104,19 +78,7 @@ int main() {
     float* resultAVX2 = (float*)aligned_alloc(32, N * sizeof(float));
     float* resultISPC = (float*)aligned_alloc(32, N * sizeof(float));
 
-//     float* arrayX = (float*)_mm_malloc(N * sizeof(float), 32);
-// float* arrayY = (float*)_mm_malloc(N * sizeof(float), 32);
-// float* resultSerial = (float*)_mm_malloc(N * sizeof(float), 32);
-// float* resultISPC = (float*)_mm_malloc(N * sizeof(float), 32);
-// float* resultAVX2 = (float*)_mm_malloc(N * sizeof(float), 32);
-// float* resultTasks = (float*)_mm_malloc(N * sizeof(float), 32);
-    
-    // float* arrayX = new float[N];
-    // float* arrayY = new float[N];
-    // float* resultSerial = new float[N];
-    // float* resultISPC = new float[N];
-    // float* resultAVX2 = new float[N];
-    // float* resultTasks = new float[N];
+
 
     // initialize array values
     for (unsigned int i=0; i<N; i++)
@@ -206,12 +168,7 @@ int main() {
 
  printf("Speedup from AVX2:       %.2fx\n", minSerial / minAVX2);
 
-//     delete[] arrayX;
-//     delete[] arrayY;
-//     delete[] resultAVX2;
-//     delete[] resultTasks;
-//    delete[] resultISPC;
-//    delete[] resultSerial;
+
 
     free(resultSerial);
     free(resultISPC);
@@ -220,12 +177,6 @@ int main() {
     free(arrayY);
     free(resultTasks);
 
-//     _mm_free(arrayX);
-// _mm_free(arrayY);
-// _mm_free(resultSerial);
-// _mm_free(resultISPC);
-// _mm_free(resultAVX2);
-// _mm_free(resultTasks);
 
 
     return 0;

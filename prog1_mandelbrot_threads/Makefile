@@ -1,7 +1,7 @@
 
 CXX=g++ -m64
-CXXFLAGS=-I../common -Iobjs/ -O3 -std=c++11 -Wall -fPIC
-
+CXXFLAGS=-I../common -Iobjs/ -O3 -std=c++11 -Wall -fPIC -mavx2 -mfma -march=native 
+ISPCFLAGS=-O3 --target=avx2-i32x8 --arch=x86-64 --pic
 APP_NAME=mandelbrot
 OBJDIR=objs
 COMMONDIR=../common

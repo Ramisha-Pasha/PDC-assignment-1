@@ -4,13 +4,13 @@
 #include <math.h>
 #include "CycleTimer.h"
 #include "sqrt_ispc.h"
-#include <immintrin.h>  // AVX2 Header
+#include <immintrin.h>  
 using namespace ispc;
 
 void avx2(float* values, float* output, int N);
 
 
-// AVX2-based fast square root computation
+
 
 
 void avx2( float *values, float *output, int N) {
@@ -70,8 +70,9 @@ int main() {
         
         // starter code populates array with random input values
         values[i] = .001f + 2.998f * static_cast<float>(rand()) / RAND_MAX;       //original input
-        //values[i] = 0.001f + (i % 2) * 2.998f   ; //  
-        //values[i] = (i % 2 == 0) ? 0.01f : 3.0f;
+        //-----------------------------part 3-----------------------
+        //values[i]= (i & 7) ? 1.0f : 2.99f;              
+        //---------------------------- part 2----------------------
         //values[i]=0.001f;   //fastest 
         //values[i] = 1.0;  //this reduces the execution times for all three kinds of codes.
        

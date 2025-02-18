@@ -3,6 +3,10 @@
 #include<iostream>
 #include<stdlib.h>
 #include "CycleTimer.h"
+#include <atomic>
+#include <vector>
+#include <cstdio>
+#include <algorithm>
 static inline int mandel(float c_re, float c_im, int count)
 {
     float z_re = c_re, z_im = c_im;
@@ -46,11 +50,6 @@ extern void mandelbrotSerial(
 // Thread entrypoint.
 //----------------------------------------------part 1-------------------------------------------------------
 void workerThreadStart(WorkerArgs * const args) {
-
-    //  For example, in a
-    // program that uses two threads, thread 0 could compute the top
-    // half of the image and thread 1 could compute the bottom half.
-
     int height = args->height;
     int startRow, endRow;
 
@@ -65,7 +64,7 @@ void workerThreadStart(WorkerArgs * const args) {
     auto start_time = std::chrono::high_resolution_clock::now();
     printf("Thread %d computing rows %d to %d\n", args->threadId, startRow, endRow);
 
-    // Compute Mandelbrot set for assigned region
+    
     mandelbrotSerial(args->x0, args->y0, args->x1, args->y1,
                      args->width, args->height,
                      startRow, endRow - startRow,
@@ -100,64 +99,28 @@ void workerThreadStart_8Threads(WorkerArgs * const args) {
 }
 
 
-//-----------------------------------------part 3 ( a good decomposition)
-#include <atomic>
-#include <iostream>
+//-----------------------------------------part 4 ( dynamic task decomposition with static blocks(8 rows))
 
-#include <atomic>
-
-#include <atomic>
-#include <algorithm>
-
-
-
-void workerThreadStartt(WorkerArgs *args) {
-    int width = args->width;
-    int height = args->height;
-    int numThreads = args->numThreads;
-    int threadId = args->threadId;
-    int maxIterations = args->maxIterations;
-    
-    const int tileSize = 16; // Fixed tile size
-    int numTilesX = (width + tileSize - 1) / tileSize;
-    int numTilesY = (height + tileSize - 1) / tileSize;
-    int totalTiles = numTilesX * numTilesY;
-
-    // **Block-Cyclic Assignment**: Each thread picks every N-th tile
-    for (int tileIndex = threadId; tileIndex < totalTiles; tileIndex += numThreads) {
-        int tileX = (tileIndex % numTilesX) * tileSize;
-        int tileY = (tileIndex / numTilesX) * tileSize;
-
-        for (int j = tileY; j < std::min(height, tileY + tileSize); j++) {
-            for (int i = tileX; i < std::min(width, tileX + tileSize); i++) {
-                float x = args->x0 + i * (args->x1 - args->x0) / (width - 1);
-                float y = args->y0 + j * (args->y1 - args->y0) / (height - 1);
-                int index = j * width + i;
-                args->output[index] = mandel(x, y, maxIterations);
-            }
-        }
-    }
-}
-
-//-----------------------yet to explore( dynamic threadin, each thread takes on the next available row without having to explicitly assign work)
-void workerThreadStart_opt(WorkerArgs * const args) {
-    const int chunkSize = 10;  // Assign 4 rows at once
+void workerThreadStart_dynamic(WorkerArgs * const args) {
+    const int blockSize = 8;  // Assign 4 rows at once
     std::atomic<int> nextRow(0);
-    
-    float dx = (args->x1 - args->x0) / args->width;
-    float dy = (args->y1 - args->y0) / args->height;
+   
+    float stepSize_x = (args->x1 - args->x0) / args->width;
+    float stepSize_y = (args->y1 - args->y0) / args->height;
+
 
     while (true) {
-        int rowStart = nextRow.fetch_add(chunkSize);
-        if (rowStart >= args->height) break;
-        int rowEnd = std::min(static_cast<int>(args->height), rowStart + chunkSize);
+        int begin_row = nextRow.fetch_add(blockSize);
+        if (begin_row >= args->height) break;
+        int rowEnd = std::min(static_cast<int>(args->height), begin_row + blockSize);
 
-        for (int row = rowStart; row < rowEnd; row += args->numThreads) {
-            float yCoord = args->y0 + row * dy;  // Compute only once per row
-            for (int col = 0; col < args->width; col++) {
-                int index = (row * args->width) + col;
-                float xCoord = args->x0 + col * dx;
-                args->output[index] = mandel(xCoord, yCoord, args->maxIterations);
+
+        for (int r = begin_row; r < rowEnd; r += args->numThreads) {
+            float cordinate_y = args->y0 + r * stepSize_y;  // Compute only once per row
+            for (int c = 0; c < args->width; c++) {
+                int ind = (r * args->width) + c;
+                float cordinate_x = args->x0 + c * stepSize_x;
+                args->output[ind] = mandel(cordinate_x, cordinate_y, args->maxIterations);
             }
         }
     }
@@ -165,35 +128,11 @@ void workerThreadStart_opt(WorkerArgs * const args) {
 
 
 
-//--------------------------------part(4)optimization---------------------------
-// void workerThreadStart_opt(WorkerArgs * const args) {
-//     int height = args->height;
-//     int width = args->width;
-//     int numThreads = args->numThreads;
-//     int threadId = args->threadId;
+    
 
-//     // Compute proper row assignment
-//     int rowsPerThread = height / numThreads;
-//     int startRow = threadId * rowsPerThread;
-//     int endRow = (threadId == numThreads - 1) ? height : startRow + rowsPerThread;
 
-//     printf("Thread %d computing rows %d to %d\n", threadId, startRow, endRow);
 
-//     auto start_time = std::chrono::high_resolution_clock::now();
 
-//     for (int y = startRow; y < endRow; y++) {
-//         for (int x = 0; x < width; x++) {
-//             int index = (y * width) + x;
-//             float xCoord = args->x0 + x * ((args->x1 - args->x0) / width);
-//             float yCoord = args->y0 + y * ((args->y1 - args->y0) / height);
-//             args->output[index] = mandel(xCoord, yCoord, args->maxIterations);
-//         }
-//     }
-
-//     auto end_time = std::chrono::high_resolution_clock::now();
-//     std::chrono::duration<double> elapsed = end_time - start_time;
-//     printf("Thread %d completed in %.5f seconds\n", threadId, elapsed.count());
-// }
 
 
 //
@@ -206,7 +145,7 @@ void mandelbrotThread(
     float x0, float y0, float x1, float y1,
     int width, int height,
     int maxIterations, int output[]) {
-    std::cout << "[DEBUG] Running mandelbrotThread() with " << numThreads << " threads\n";
+    std::cout << " Running mandelbrotThread() with " << numThreads << " threads\n";
 //-------------------part 1---------------------------------
     // if (numThreads != 2) {
     //     fprintf(stderr, "Error: This version only supports 2 threads.\n");
@@ -239,7 +178,7 @@ void mandelbrotThread(
     // workers[1].join();
 
 //-------------------------------part 2--------------------------------
-    static constexpr int MAX_THREADS = 8; // Support up to 8 threads
+    static constexpr int MAX_THREADS = 16; // Support up to 16 threads
     if (numThreads > MAX_THREADS) {
         fprintf(stderr, "Error: Max allowed threads is %d\n", MAX_THREADS);
         exit(1);
@@ -264,11 +203,11 @@ void mandelbrotThread(
 
     // Spawn worker threads
     for (int i = 1; i < numThreads; i++) {
-        workers[i] = std::thread(workerThreadStartt, &args[i]);
+        workers[i] = std::thread(workerThreadStart_dynamic, &args[i]);
     }
 
-    // Run worker 0 on the main thread
-    workerThreadStartt(&args[0]);
+    
+    workerThreadStart_dynamic(&args[0]);
 
     // Join all worker threads
     for (int i = 1; i < numThreads; i++) {
